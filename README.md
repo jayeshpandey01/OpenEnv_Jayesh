@@ -23,7 +23,7 @@ tags:
 
 ## What is this?
 
-A **real-world Task Manager environment** where an AI agent must add, prioritize, and complete tasks while respecting deadlines and dependency constraints. The environment cycles through three meaningfully distinct difficulty levels — each demanding progressively more sophisticated planning.
+A **real-world Task Manager environment** where an AI agent must add, prioritize, and complete tasks while respecting deadlines and dependency constraints. The environment cycles through three meaningfully distinct difficulty levels -- each demanding progressively more sophisticated planning.
 
 This environment targets real-world utility: the kind of task scheduling problems that users, productivity apps, and organizational tools deal with every day.
 
@@ -33,7 +33,7 @@ This environment targets real-world utility: the kind of task scheduling problem
 
 | Level | Goal | Key Constraints |
 |-------|------|-----------------|
-| **Easy** | Add 2–3 tasks, then `list` them | None — basic task CRUD |
+| **Easy** | Add 2-3 tasks, then `list` them | None -- basic task CRUD |
 | **Medium** | Add 4 tasks with priorities & deadlines; complete all High-priority before deadline | Deadline enforcement, priority management |
 | **Hard** | Add 5 tasks with priorities, deadlines, AND dependencies; complete in valid topological order | Dependency ordering + deadline enforcement + penalty accumulation |
 
@@ -68,7 +68,7 @@ TaskManagerObservation(
     message    = "Task 'Fix bug' added", # status message or error description
     tasks      = [...],                  # full task list snapshot
     violations = [...],                  # list of rule violations this episode
-    reward     = 0.45,                   # cumulative partial reward (0.0–1.0)
+    reward     = 0.45,                   # cumulative partial reward (0.0-1.0)
     done       = False,                  # True when episode goal is achieved
     metadata   = {
         "difficulty": "Hard",
@@ -101,7 +101,7 @@ TaskManagerObservation(
 |-------|--------|
 | Each task added (up to 3) | +0.15 |
 | Calling `list` | +0.20 |
-| **Goal: ≥2 tasks added + list called** | **1.0** |
+| **Goal: >=2 tasks added + list called** | **1.0** |
 
 ### Medium Mode
 | Event | Reward |
@@ -109,8 +109,8 @@ TaskManagerObservation(
 | Each task added (up to 4) | +0.15 |
 | Each task with explicit non-Normal priority | +0.10 |
 | Each High-priority task completed **on time** | +0.20 |
-| Deadline missed | **−0.25** |
-| **Goal: 4 tasks, ≥2 High, all High completed on time** | **1.0** |
+| Deadline missed | **-0.25** |
+| **Goal: 4 tasks, >=2 High, all High completed on time** | **1.0** |
 
 ### Hard Mode
 | Event | Reward |
@@ -119,9 +119,9 @@ TaskManagerObservation(
 | Each task with non-Normal priority | +0.10 |
 | Each task completed without any violation | +0.25 |
 | Perfect run bonus (all done, zero violations) | **+0.10** |
-| Dependency violation | **−0.30** |
-| Deadline missed | **−0.25** |
-| **Goal: 5 tasks, ≥2 High, all completed, zero violations** | **1.0** |
+| Dependency violation | **-0.30** |
+| Deadline missed | **-0.25** |
+| **Goal: 5 tasks, >=2 High, all completed, zero violations** | **1.0** |
 
 ---
 
@@ -167,7 +167,7 @@ env.step(TaskManagerAction(command="add", title="Write release notes", priority=
 env.step(TaskManagerAction(command="add", title="Team prep",        priority="Low"))
 
 env.step(TaskManagerAction(command="complete", title="Fix critical bug"))   # +0.20 on-time
-obs = env.step(TaskManagerAction(command="complete", title="Deploy hotfix"))  # +0.20 → done=True, reward=1.0
+obs = env.step(TaskManagerAction(command="complete", title="Deploy hotfix"))  # +0.20 -> done=True, reward=1.0
 ```
 
 ### Hard Mode (with dependencies)
@@ -196,16 +196,16 @@ obs = env.step(TaskManagerAction(command="complete", title="Deploy"))   # done=T
 ## Environment Design Rationale
 
 ### Why these three levels?
-- **Easy** establishes baseline task CRUD competency — can the agent perform basic operations?
-- **Medium** adds time pressure and priority trade-offs — a realistic proxy for real project management.
-- **Hard** requires multi-step planning with constraint satisfaction — approximates real dependency scheduling (e.g., CI/CD pipelines, project Gantt charts).
+- **Easy** establishes baseline task CRUD competency -- can the agent perform basic operations?
+- **Medium** adds time pressure and priority trade-offs -- a realistic proxy for real project management.
+- **Hard** requires multi-step planning with constraint satisfaction -- approximates real dependency scheduling (e.g., CI/CD pipelines, project Gantt charts).
 
 ### Why partial rewards?
 Smooth, dense reward signals (+0.15 per task, +0.10 per priority, etc.) enable reinforcement learning agents to make meaningful progress even without solving the full episode. This is superior to sparse reward environments where only terminal success counts.
 
 ### Why penalties?
-- Deadline misses (−0.25) discourage agents from completing tasks arbitrarily late.
-- Dependency violations (−0.30) teach agents that **order matters** — a fundamental property of real-world task graphs.
+- Deadline misses (-0.25) discourage agents from completing tasks arbitrarily late.
+- Dependency violations (-0.30) teach agents that **order matters** -- a fundamental property of real-world task graphs.
 
 ---
 
@@ -225,15 +225,15 @@ Smooth, dense reward signals (+0.15 per task, +0.10 per priority, etc.) enable r
 
 ```
 openenv_jayesh/
-├── Dockerfile
-├── openenv.yaml
-├── pyproject.toml
-├── models.py                  ← Action + Observation types
-├── client.py                  ← HTTP client helper
-├── inference.py               ← End-to-end demo (all 3 levels)
-└── server/
-    ├── app.py                 ← FastAPI app entry point
-    └── openenv_jayesh_environment.py  ← Core environment logic
++-- Dockerfile
++-- openenv.yaml
++-- pyproject.toml
++-- models.py                  <- Action + Observation types
++-- client.py                  <- HTTP client helper
++-- inference.py               <- End-to-end demo (all 3 levels)
++-- server/
+    +-- app.py                 <- FastAPI app entry point
+    +-- openenv_jayesh_environment.py  <- Core environment logic
 ```
 
 ---
