@@ -1,7 +1,11 @@
 """
-inference.py - Demonstration of the Smart Personal Task Manager OpenEnv.
+inference.py - Task Manager OpenEnv standalone test runner.
 
-Runs all three difficulty scenarios and prints step-by-step reward signals.
+Runs three scenarios (no server). Easy and Hard show successful runs; Medium shows one deadline miss.
+Hard includes a separate violation demo episode.
+
+Usage:
+    python inference.py
 """
 
 import sys
@@ -9,139 +13,133 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from client import OpenenvJayeshEnv
+from server.openenv_jayesh_environment import OpenenvJayeshEnvironment
 from models import TaskManagerAction
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
-def _step(client, action: TaskManagerAction, label: str):
-    res = client.step(action)
-    obs = res.observation
-    done_tag = " [DONE]" if res.done else ""
-    violation_tag = ""
-    if hasattr(obs, "violations") and obs.violations:
-        violation_tag = f"\n      Violations: {obs.violations[-1]}"
-    print(
-        f"  {label:<40} | Score: {res.reward:.3f}{done_tag}"
-        f"\n      -> {obs.message}{violation_tag}"
+def step(env, action: TaskManagerAction, label: str):
+    obs = env.step(action)
+    done_tag = " [DONE]" if obs.done else ""
+    print(f"  {label:<50} | score={obs.reward:.3f}{done_tag}")
+    msg = obs.message or ""
+    if obs.violations and (
+        "(!)" in msg
+        or "Score impact (Medium):" in msg
+        or "Score impact (Hard):" in msg
+        or "Dependency violation" in msg
+    ):
+        print(f"    (!) {obs.violations[-1]}")
+    for marker in ("Score impact (Medium):", "Score impact (Hard):"):
+        if marker in msg:
+            sub = msg[msg.index(marker) :]
+            if "). Task" in sub:
+                line = sub.split("). Task", 1)[0] + ")."
+            else:
+                line = sub.strip()
+            print(f"    >> {line}")
+            break
+    return obs
+
+
+def run_easy():
+    print("\n" + "=" * 70)
+    print("EASY MODE  (perfect: 3 tasks + list)")
+    print("=" * 70)
+    env = OpenenvJayeshEnvironment()
+    obs = env.reset()
+    print(f"Goal: {obs.message.splitlines()[0]}\n")
+
+    step(env, TaskManagerAction(command="add", title="Buy groceries", priority="Low"), "add 'Buy groceries' Low")
+    step(env, TaskManagerAction(command="add", title="Call dentist", priority="Normal"), "add 'Call dentist' Normal")
+    step(env, TaskManagerAction(command="add", title="Review PR", priority="High"), "add 'Review PR' High")
+    obs = step(env, TaskManagerAction(command="list"), "list (shows all tasks)")
+    return obs.reward
+
+
+def run_medium():
+    print("\n" + "=" * 70)
+    print("MEDIUM MODE  (one deadline miss on a High task)")
+    print("=" * 70)
+    env = OpenenvJayeshEnvironment()
+    env._reset_count = 1
+    obs = env.reset()
+    print(f"Goal: {obs.message.splitlines()[0]}\n")
+
+    future = "2099-12-31"
+    past = "2020-01-01"
+
+    step(env, TaskManagerAction(command="add", title="Fix critical bug", priority="High", deadline=future), "add 'Fix critical bug' High  deadline=future")
+    step(env, TaskManagerAction(command="add", title="Deploy hotfix", priority="High", deadline=past), "add 'Deploy hotfix' High  deadline=PAST")
+    step(env, TaskManagerAction(command="add", title="Write release notes", priority="Normal", deadline=future), "add 'Write release notes' Normal")
+    step(env, TaskManagerAction(command="add", title="Standup prep", priority="Low", deadline=future), "add 'Standup prep' Low")
+    step(env, TaskManagerAction(command="complete", title="Fix critical bug"), "complete 'Fix critical bug' [on-time]")
+    obs = step(env, TaskManagerAction(command="complete", title="Deploy hotfix"), "complete 'Deploy hotfix' [DEADLINE MISSED]")
+    return obs.reward
+
+
+def run_hard():
+    print("\n" + "=" * 70)
+    print("HARD MODE  (perfect topological order, all deadlines met)")
+    print("=" * 70)
+    env = OpenenvJayeshEnvironment()
+    env._reset_count = 2
+    obs = env.reset()
+    print(f"Goal: {obs.message.splitlines()[0]}\n")
+
+    future = "2099-12-31"
+
+    step(env, TaskManagerAction(command="add", title="Reproduce bug", priority="High", deadline=future), "add 'Reproduce bug' High")
+    step(env, TaskManagerAction(command="add", title="Write tests", priority="Normal", deadline=future), "add 'Write tests' Normal")
+    step(
+        env,
+        TaskManagerAction(command="add", title="Write fix", priority="High", deadline=future, depends_on=["Reproduce bug"]),
+        "add 'Write fix' High  (dep: Reproduce bug)",
     )
-    return res
-
-
-# ---------------------------------------------------------------------------
-# Easy scenario
-# ---------------------------------------------------------------------------
-
-def run_easy(client):
-    print("\n" + "=" * 70)
-    print("SCENARIO 1 - EASY MODE")
-    print("=" * 70)
-    res = client.reset()
-    print(f"\nGoal:\n{res.observation.message}\n")
-
-    today = "2026-04-15"
-
-    _step(client, TaskManagerAction(command="add", title="Buy groceries", priority="Normal", deadline=today), "add 'Buy groceries' Normal")
-    _step(client, TaskManagerAction(command="add", title="Call the dentist", priority="Low"), "add 'Call the dentist' Low")
-    _step(client, TaskManagerAction(command="add", title="Review meeting notes", priority="Normal"), "add 'Review meeting notes'")
-    _step(client, TaskManagerAction(command="list"), "list (triggers goal completion)")
+    step(
+        env,
+        TaskManagerAction(command="add", title="Code review", priority="Normal", deadline=future, depends_on=["Write fix", "Write tests"]),
+        "add 'Code review'  (dep: Write fix, Write tests)",
+    )
+    step(
+        env,
+        TaskManagerAction(command="add", title="Deploy to production", priority="Low", deadline=future, depends_on=["Code review"]),
+        "add 'Deploy'  (dep: Code review)",
+    )
 
     print()
-
-
-# ---------------------------------------------------------------------------
-# Medium scenario
-# ---------------------------------------------------------------------------
-
-def run_medium(client):
-    print("\n" + "=" * 70)
-    print("SCENARIO 2 - MEDIUM MODE")
-    print("=" * 70)
-    res = client.reset()
-    print(f"\nGoal:\n{res.observation.message}\n")
-
-    # Use future deadlines so completions are on-time
-    today = "2026-04-15"
-    tomorrow = "2026-04-16"
-    next_week = "2026-04-22"
-
-    _step(client, TaskManagerAction(command="add", title="Fix critical bug", priority="High", deadline=today), "add 'Fix critical bug' High")
-    _step(client, TaskManagerAction(command="add", title="Deploy hotfix", priority="High", deadline=tomorrow), "add 'Deploy hotfix' High")
-    _step(client, TaskManagerAction(command="add", title="Write release notes", priority="Normal", deadline=next_week), "add 'Write release notes' Normal")
-    _step(client, TaskManagerAction(command="add", title="Team standup prep", priority="Low"), "add 'Team standup prep' Low")
-
-    # Complete High-priority tasks on time
-    _step(client, TaskManagerAction(command="complete", title="Fix critical bug"), "complete 'Fix critical bug' [High, on-time]")
-    _step(client, TaskManagerAction(command="complete", title="Deploy hotfix"), "complete 'Deploy hotfix' [High, on-time -> GOAL]")
+    step(env, TaskManagerAction(command="complete", title="Reproduce bug"), "complete 'Reproduce bug'")
+    step(env, TaskManagerAction(command="complete", title="Write tests"), "complete 'Write tests'")
+    step(env, TaskManagerAction(command="complete", title="Write fix"), "complete 'Write fix'")
+    step(env, TaskManagerAction(command="complete", title="Code review"), "complete 'Code review'")
+    obs = step(env, TaskManagerAction(command="complete", title="Deploy to production"), "complete 'Deploy'  [goal]")
 
     print()
+    print("  -- Violation demo (fresh Hard episode) --")
+    env2 = OpenenvJayeshEnvironment()
+    env2._reset_count = 2
+    env2.reset()
+    step(env2, TaskManagerAction(command="add", title="Task A", priority="High", deadline=future), "add 'Task A' High")
+    step(env2, TaskManagerAction(command="add", title="Task B", priority="Normal", deadline=future, depends_on=["Task A"]), "add 'Task B'  (dep: Task A)")
+    obs2 = step(env2, TaskManagerAction(command="complete", title="Task B"), "WRONG: complete 'Task B' before 'Task A'")
+    print(f"  Score after dep violation: {obs2.reward:.3f}  (penalty applied)")
 
+    return obs.reward
 
-# ---------------------------------------------------------------------------
-# Hard scenario
-# ---------------------------------------------------------------------------
-
-def run_hard(client):
-    print("\n" + "=" * 70)
-    print("SCENARIO 3 - HARD MODE (dependencies + deadlines)")
-    print("=" * 70)
-    res = client.reset()
-    print(f"\nGoal:\n{res.observation.message}\n")
-
-    t1  = "2026-04-15"
-    t2  = "2026-04-16"
-    t3  = "2026-04-18"
-    t4  = "2026-04-20"
-    t5  = "2026-04-22"
-
-    # Build dependency graph:
-    #   Reproduce bug  ---> Write fix  ---> Code review  ---> Deploy
-    #   Write tests    ---> Code review
-    _step(client, TaskManagerAction(command="add", title="Reproduce bug", priority="High", deadline=t1), "add 'Reproduce bug' High")
-    _step(client, TaskManagerAction(command="add", title="Write tests", priority="Normal", deadline=t2), "add 'Write tests' Normal")
-    _step(client, TaskManagerAction(command="add", title="Write fix", priority="High", deadline=t3, depends_on=["Reproduce bug"]), "add 'Write fix' High (depends: Reproduce bug)")
-    _step(client, TaskManagerAction(command="add", title="Code review", priority="Normal", deadline=t4, depends_on=["Write fix", "Write tests"]), "add 'Code review' Normal (depends: Write fix, Write tests)")
-    _step(client, TaskManagerAction(command="add", title="Deploy to production", priority="Low", deadline=t5, depends_on=["Code review"]), "add 'Deploy to prod' Low (depends: Code review)")
-
-    print()
-    print("  -- Completing in CORRECT topological order --")
-    _step(client, TaskManagerAction(command="complete", title="Reproduce bug"), "complete 'Reproduce bug' [no deps, on-time]")
-    _step(client, TaskManagerAction(command="complete", title="Write tests"), "complete 'Write tests' [no deps, on-time]")
-    _step(client, TaskManagerAction(command="complete", title="Write fix"), "complete 'Write fix' [dep met, on-time]")
-    _step(client, TaskManagerAction(command="complete", title="Code review"), "complete 'Code review' [deps met, on-time]")
-    _step(client, TaskManagerAction(command="complete", title="Deploy to production"), "complete 'Deploy to prod' [all deps met -> GOAL]")
-
-    print()
-    print("  -- Violations demo (new reset, same Hard mode) --")
-    res = client.reset()  # same Hard cycle
-    print(f"  (Re-reset into: {res.observation.message.splitlines()[0]})")
-
-    _step(client, TaskManagerAction(command="add", title="Task A", priority="High", deadline=t1), "add 'Task A' High")
-    _step(client, TaskManagerAction(command="add", title="Task B", priority="Normal", deadline=t2, depends_on=["Task A"]), "add 'Task B' Normal (depends: Task A)")
-    res = _step(client, TaskManagerAction(command="complete", title="Task B"), "WRONG: complete 'Task B' before 'Task A'")
-    print(f"      Score after violation: {res.reward:.3f}")
-
-    print()
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("Smart Personal Task Manager - OpenEnv Inference Demo")
-    print("Connecting to http://127.0.0.1:8000 ...")
+    print("  Task Manager OpenEnv - Inference Runner")
     print("=" * 70)
 
-    try:
-        with OpenenvJayeshEnv(base_url="http://127.0.0.1:8000").sync() as client:
-            run_easy(client)
-            run_medium(client)
-            run_hard(client)
-        print("\nAll scenarios completed successfully.")
-    except Exception as e:
-        print(f"\nError: Could not connect to server. Is it running?\n  {e}")
-        sys.exit(1)
+    easy_score = run_easy()
+    medium_score = run_medium()
+    hard_score = run_hard()
+
+    avg = (easy_score + medium_score + hard_score) / 3
+
+    print("\n" + "=" * 70)
+    print(f"  EASY   final score : {easy_score:.3f}")
+    print(f"  MEDIUM final score : {medium_score:.3f}  (deadline miss penalty)")
+    print(f"  HARD   final score : {hard_score:.3f}")
+    print(f"  AVERAGE            : {avg:.3f}")
+    print("=" * 70)

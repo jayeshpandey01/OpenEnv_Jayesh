@@ -1,4 +1,7 @@
-__pycache__
-.venv
+__pycache__/
+.venv/
 .env
-openenv_openenv_jayesh.egg-info
+*.egg-info/
+outputs/
+*.txt
+out*.py

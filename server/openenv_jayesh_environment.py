@@ -1,31 +1,12 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-
 """
-Smart Personal Task Manager - OpenEnv Environment Implementation.
+Smart Personal Task Manager - OpenEnv Environment
 
-Three difficulty tiers:
+Easy: three tasks + list; full 1.0 when at least 2 distinct priorities; else partial credit.
+Medium: small +0.07 signals; deadline miss −0.15.
+Hard: +0.018 per dep edge on add; rising clean completes; dep-satisfied micro-bonus; topo bonus;
+      deadline miss −0.15, dependency violation −0.18.
 
-Easy (reset 0, 3, 6 ...)
-  Goal: Add 2-3 tasks of any priority, then call 'list'.
-  Reward: +0.15 per task added (up to 3), +0.20 for listing. Full 1.0 on completion.
-
-Medium (reset 1, 4, 7 ...)
-  Goal: Add 4 tasks with mixed priorities AND deadlines.
-        Complete ALL High-priority tasks before their deadlines.
-  Reward: +0.15 per task added (up to 4), +0.10 per correct priority label,
-          +0.20 per High-priority task completed on time.
-          -0.25 penalty per deadline miss.
-          Full 1.0 on completion.
-
-Hard (reset 2, 5, 8 ...)
-  Goal: Add 5 tasks with priorities, deadlines, AND dependencies.
-        Complete tasks in valid dependency order; respect all deadlines.
-  Reward: +0.15 per task added (up to 5), +0.10 per correct priority,
-          +0.25 per task completed without violation.
-          Bonus +0.10 for achieving perfect (optimal) topological ordering.
-          -0.30 per dependency violation, -0.25 per deadline miss.
-          Full 1.0 on perfect completion.
+Reward clamp [0.0, 1.0].
 """
 
 from __future__ import annotations
@@ -42,21 +23,19 @@ try:
 except (ModuleNotFoundError, ImportError):
     from models import TaskManagerAction, TaskManagerObservation
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 VALID_PRIORITIES = {"Low", "Normal", "High"}
-PRIORITY_RANK = {"Low": 0, "Normal": 1, "High": 2}
+
+# Fair penalties (requested ranges)
+MEDIUM_DEADLINE_MISS_PENALTY = 0.15   # -0.12 … -0.18
+HARD_DEADLINE_MISS_PENALTY = 0.15     # -0.12 … -0.18
+HARD_DEP_VIOLATION_PENALTY = 0.18     # -0.15 … -0.20
 
 
-def _parse_date(dt_str: Optional[str]) -> Optional[date]:
-    """Parse an ISO-8601 date string; return None on failure."""
-    if not dt_str:
+def _parse_date(s: Optional[str]) -> Optional[date]:
+    if not s:
         return None
     try:
-        return date.fromisoformat(dt_str)
+        return date.fromisoformat(s)
     except ValueError:
         return None
 
@@ -65,60 +44,38 @@ def _today() -> date:
     return date.today()
 
 
-# ---------------------------------------------------------------------------
-# Environment
-# ---------------------------------------------------------------------------
-
 class OpenenvJayeshEnvironment(Environment):
-    """
-    Smart Personal Task Manager with three distinct difficulty levels.
-
-    Easy   -> add tasks + list
-    Medium -> deadlines + priority management
-    Hard   -> deadlines + priority + dependency ordering
-    """
+    """Task Manager with Easy / Medium / Hard difficulty levels."""
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
 
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
-
     def __init__(self) -> None:
         super().__init__()
-        self._state = State(episode_id=str(uuid4()), step_count=0)
         self._reset_count = 0
         self._scenarios = ["Easy", "Medium", "Hard"]
-        self._init_episode_state()
+        self._state = State(episode_id=str(uuid4()), step_count=0)
+        self._init_state()
 
-    def _init_episode_state(self) -> None:
-        """Zero all mutable per-episode state."""
-        self.tasks: List[Dict[str, Any]] = []       # ordered list of task dicts
-        self.difficulty: str = "Easy"
-        self.goal_completed: bool = False
-
-        # Counters
-        self.tasks_added: int = 0
-        self.tasks_completed: int = 0
-        self.high_tasks_added: int = 0
-        self.high_tasks_completed_on_time: int = 0
-        self.deadline_misses: int = 0
-        self.dependency_violations: int = 0
-        self.completion_order: List[str] = []       # titles in completion order
-
-        # Episode-level flag
-        self.list_called: bool = False
-
-        # Violations log (for observation)
+    def _init_state(self) -> None:
+        self.tasks: List[Dict[str, Any]] = []
+        self.difficulty = "Easy"
+        self.goal_completed = False
+        self.list_called = False
         self.violations: List[str] = []
 
-        # Target counts per difficulty
-        self.target_tasks: int = 2
-        self.target_high: int = 0
+        self.tasks_added = 0
+        self.high_added = 0
+        self.high_on_time = 0
+        self.clean_completions = 0
+        self.deadline_misses = 0
+        self.dep_violations = 0
 
-    # ------------------------------------------------------------------
-    # reset
-    # ------------------------------------------------------------------
+        self._r_add = 0.0
+        self._r_priority = 0.0
+        self._r_deadline_set = 0.0
+        self._r_complete = 0.0
+        self._r_hard_dep_ok = 0.0
+        self._r_hard_edge = 0.0
 
     def reset(
         self,
@@ -127,60 +84,40 @@ class OpenenvJayeshEnvironment(Environment):
         **kwargs: Any,
     ) -> TaskManagerObservation:
         self._state = State(episode_id=episode_id or str(uuid4()), step_count=0)
-        self._init_episode_state()
+        self._init_state()
 
-        idx = self._reset_count % len(self._scenarios)
-        self.difficulty = self._scenarios[idx]
+        self.difficulty = self._scenarios[self._reset_count % 3]
         self._reset_count += 1
 
-        if self.difficulty == "Easy":
-            self.target_tasks = 2
-            self.target_high = 0
-            msg = (
-                "=== EASY MODE ===\n"
-                "Goal: Add 2-3 tasks of any priority, then call 'list' to review them.\n"
-                "Rewards: +0.15 per task added (max 3), +0.20 for calling list.\n"
-                "Complete the goal to receive full reward (1.0)."
-            )
-        elif self.difficulty == "Medium":
-            self.target_tasks = 4
-            self.target_high = 2
-            msg = (
-                "=== MEDIUM MODE ===\n"
-                "Goal: Add 4 tasks with priorities AND deadlines.\n"
-                "      Complete ALL High-priority tasks before their deadlines.\n"
-                "Tips: Include at least 2 High-priority tasks.\n"
-                "      Use deadline='YYYY-MM-DD' (today or future date for on-time credit).\n"
-                "Rewards: +0.15/task added, +0.10/correct priority, +0.20/High completed on time.\n"
-                "Penalty: -0.25 per deadline miss."
-            )
-        else:  # Hard
-            self.target_tasks = 5
-            self.target_high = 2
-            msg = (
-                "=== HARD MODE ===\n"
-                "Goal: Add 5 tasks with priorities, deadlines, AND dependencies.\n"
-                "      Complete tasks in valid dependency order (dependencies first).\n"
-                "      Respect all deadlines.\n"
-                "Tips: Use depends_on=['Task Title'] when adding a dependent task.\n"
-                "      Complete prerequisite tasks before their dependents.\n"
-                "Rewards: +0.15/task, +0.10/priority, +0.25/completion without violation.\n"
-                "         +0.10 bonus for perfect topological ordering.\n"
-                "Penalty: -0.30/dependency violation, -0.25/deadline miss."
-            )
-
+        msgs = {
+            "Easy": (
+                "EASY MODE\n"
+                "Goal: Add 3 tasks with at least 2 different priorities, then call 'list'.\n"
+                "Full score (1.0) when 3 tasks + list + 2+ priority levels; "
+                "otherwise partial credit if you list without enough variety."
+            ),
+            "Medium": (
+                "MEDIUM MODE\n"
+                "Goal: Add 4 tasks with priorities and deadlines. Every High task on time.\n"
+                "Rewards: small steps (~+0.07 per signal) for smooth partial credit.\n"
+                f"Penalty: -{MEDIUM_DEADLINE_MISS_PENALTY:.2f} per deadline miss."
+            ),
+            "Hard": (
+                "HARD MODE\n"
+                "Goal: 5 tasks with deps + deadlines; valid order; no misses.\n"
+                "Rewards: tiny edge credit when linking deps on add; rising clean completes; "
+                "small bonus when deps satisfied at complete.\n"
+                f"Penalties: -{HARD_DEP_VIOLATION_PENALTY:.2f} dependency, -{HARD_DEADLINE_MISS_PENALTY:.2f} deadline miss."
+            ),
+        }
         return TaskManagerObservation(
             success=True,
-            message=msg,
+            message=msgs[self.difficulty],
             tasks=[],
             violations=[],
             done=False,
             reward=0.0,
         )
-
-    # ------------------------------------------------------------------
-    # step
-    # ------------------------------------------------------------------
 
     def step(
         self,
@@ -190,25 +127,22 @@ class OpenenvJayeshEnvironment(Environment):
     ) -> TaskManagerObservation:
         self._state.step_count += 1
         cmd = (action.command or "").strip().lower()
-        success = True
-        message = ""
 
         if cmd == "add":
-            success, message = self._handle_add(action)
+            success, msg = self._add(action)
         elif cmd == "complete":
-            success, message = self._handle_complete(action)
+            success, msg = self._complete(action)
         elif cmd == "list":
             self.list_called = True
-            message = self._format_task_list()
+            success, msg = True, self._fmt_list()
         else:
-            success = False
-            message = f"Unknown command '{cmd}'. Valid commands: 'add', 'complete', 'list'."
+            success, msg = False, f"Unknown command '{cmd}'. Use: add | complete | list."
 
-        reward = self._calculate_reward()
+        reward = self._score()
 
         return TaskManagerObservation(
             success=success,
-            message=message,
+            message=msg,
             tasks=list(self.tasks),
             violations=list(self.violations),
             done=self.goal_completed,
@@ -217,246 +151,223 @@ class OpenenvJayeshEnvironment(Environment):
                 "difficulty": self.difficulty,
                 "step": self._state.step_count,
                 "tasks_added": self.tasks_added,
-                "tasks_completed": self.tasks_completed,
+                "clean_completions": self.clean_completions,
+                "dep_violations": self.dep_violations,
                 "deadline_misses": self.deadline_misses,
-                "dependency_violations": self.dependency_violations,
             },
         )
 
-    # ------------------------------------------------------------------
-    # Command handlers
-    # ------------------------------------------------------------------
-
-    def _handle_add(self, action: TaskManagerAction):
-        if not action.title or not action.title.strip():
-            return False, "Error: 'title' is required for the 'add' command."
-
-        title = action.title.strip()
-
-        # Duplicate check
+    def _add(self, action: TaskManagerAction):
+        title = (action.title or "").strip()
+        if not title:
+            return False, "Error: 'title' is required for add."
         if any(t["title"] == title for t in self.tasks):
-            return False, f"Error: A task titled '{title}' already exists."
+            return False, f"Error: task '{title}' already exists."
 
         priority = (action.priority or "Normal").strip()
         if priority not in VALID_PRIORITIES:
             priority = "Normal"
 
-        deadline_str = action.deadline
-        deadline_obj = _parse_date(deadline_str)
+        deadline_str = (action.deadline or "").strip() or None
 
         depends_on: List[str] = []
-        if action.depends_on:
-            for dep in action.depends_on:
-                dep = dep.strip()
-                if dep and any(t["title"] == dep for t in self.tasks):
-                    depends_on.append(dep)
-                elif dep:
-                    return (
-                        False,
-                        f"Error: Dependency '{dep}' does not exist yet. "
-                        "Add prerequisite tasks first.",
-                    )
+        for dep in (action.depends_on or []):
+            dep = dep.strip()
+            if not dep:
+                continue
+            if not any(t["title"] == dep for t in self.tasks):
+                return False, f"Error: dependency '{dep}' not found. Add it first."
+            depends_on.append(dep)
 
         task: Dict[str, Any] = {
             "title": title,
             "priority": priority,
-            "deadline": deadline_str or "none",
+            "deadline": deadline_str,
             "depends_on": depends_on,
             "completed": False,
             "deadline_missed": False,
-            "dependency_violation": False,
-            "added_step": self._state.step_count,
+            "dep_violation": False,
         }
         self.tasks.append(task)
         self.tasks_added += 1
         if priority == "High":
-            self.high_tasks_added += 1
+            self.high_added += 1
 
-        msg = (
-            f"Task added: '{title}' | Priority: {priority}"
-            + (f" | Deadline: {deadline_str}" if deadline_str else "")
-            + (f" | Depends on: {depends_on}" if depends_on else "")
-        )
-        return True, msg
+        if self.difficulty == "Medium":
+            # Smaller per-signal steps (~0.07) so scores rise gradually (avoid large single-step jumps)
+            self._r_add += 0.07
+            if priority != "Normal":
+                self._r_priority += 0.07
+            if deadline_str:
+                self._r_deadline_set += 0.07
+        elif self.difficulty == "Hard":
+            # Slightly smaller per-signal steps than Medium to smooth the last adds (e.g. Deploy)
+            inc = 0.062
+            self._r_add += inc
+            if priority != "Normal":
+                self._r_priority += inc
+            if deadline_str:
+                self._r_deadline_set += inc
+            if depends_on:
+                self._r_hard_edge += 0.012 * float(len(depends_on))
 
-    def _handle_complete(self, action: TaskManagerAction):
-        if not action.title or not action.title.strip():
-            return False, "Error: 'title' is required for the 'complete' command."
+        parts = [f"Task '{title}' added (priority={priority}"]
+        if deadline_str:
+            parts[0] += f", deadline={deadline_str}"
+        if depends_on:
+            parts[0] += f", depends_on={depends_on}"
+        parts[0] += ")."
+        return True, " ".join(parts)
 
-        title = action.title.strip()
+    def _complete(self, action: TaskManagerAction):
+        title = (action.title or "").strip()
+        if not title:
+            return False, "Error: 'title' is required for complete."
+
         task = next((t for t in self.tasks if t["title"] == title), None)
-
         if task is None:
-            return False, f"Error: Task '{title}' not found."
+            return False, f"Error: task '{title}' not found."
         if task["completed"]:
             return False, f"Task '{title}' is already completed."
 
-        # ---- Dependency check ----
-        dep_violation = False
+        msgs = []
+        dep_viol = False
+        dl_miss = False
+
         unmet = [
-            dep for dep in task["depends_on"]
-            if not any(t["title"] == dep and t["completed"] for t in self.tasks)
+            d for d in task["depends_on"]
+            if not any(t["title"] == d and t["completed"] for t in self.tasks)
         ]
         if unmet:
-            dep_violation = True
-            task["dependency_violation"] = True
-            self.dependency_violations += 1
-            violation_msg = (
-                f"DEPENDENCY VIOLATION: Completed '{title}' before prerequisites: {unmet}. "
-                "Penalty applied."
-            )
-            self.violations.append(violation_msg)
+            dep_viol = True
+            task["dep_violation"] = True
+            self.dep_violations += 1
+            v = f"DEP VIOLATION: '{title}' completed before {unmet}."
+            self.violations.append(v)
+            msgs.append("(!) Dependency violation — penalty applied.")
 
-        # ---- Deadline check ----
-        deadline_missed = False
         dl = _parse_date(task["deadline"])
-        if dl is not None and _today() > dl:
-            deadline_missed = True
+        if dl and _today() > dl:
+            dl_miss = True
             task["deadline_missed"] = True
             self.deadline_misses += 1
-            violation_msg = (
-                f"DEADLINE MISSED: '{title}' was due {task['deadline']} "
-                f"but completed on {_today().isoformat()}. Penalty applied."
-            )
-            self.violations.append(violation_msg)
+            v = f"DEADLINE MISSED: '{title}' was due {task['deadline']} (completed after deadline)."
+            self.violations.append(v)
+            msgs.append("(!) Deadline missed — penalty applied.")
+            if self.difficulty == "Medium":
+                msgs.append(
+                    f"Score impact (Medium): -{MEDIUM_DEADLINE_MISS_PENALTY:.2f} for this miss "
+                    f"(total deadline-miss penalty: "
+                    f"{self.deadline_misses * MEDIUM_DEADLINE_MISS_PENALTY:.2f})."
+                )
+            elif self.difficulty == "Hard":
+                msgs.append(
+                    f"Score impact (Hard): -{HARD_DEADLINE_MISS_PENALTY:.2f} for this miss "
+                    f"(total: {self.deadline_misses * HARD_DEADLINE_MISS_PENALTY:.2f})."
+                )
 
-        # ---- Mark completed ----
         task["completed"] = True
-        self.tasks_completed += 1
-        self.completion_order.append(title)
 
-        if task["priority"] == "High" and not deadline_missed:
-            self.high_tasks_completed_on_time += 1
-
-        msg_parts = [f"Task '{title}' marked complete."]
-        if dep_violation:
-            msg_parts.append("(!) Dependency violation penalty applied.")
-        if deadline_missed:
-            msg_parts.append("(!) Deadline miss penalty applied.")
-        if not dep_violation and not deadline_missed:
-            msg_parts.append("Clean completion -- no penalties.")
-
-        return True, " ".join(msg_parts)
-
-    # ------------------------------------------------------------------
-    # Reward calculation
-    # ------------------------------------------------------------------
-
-    def _calculate_reward(self) -> float:
-        self.goal_completed = False
-        reward = 0.0
-
-        if self.difficulty == "Easy":
-            reward = self._reward_easy()
-        elif self.difficulty == "Medium":
-            reward = self._reward_medium()
+        if not dep_viol and not dl_miss:
+            order_idx = self.clean_completions
+            self.clean_completions += 1
+            if task["priority"] == "High":
+                self.high_on_time += 1
+            msgs.append(f"Task '{title}' completed cleanly.")
+            if self.difficulty == "Medium":
+                if task["priority"] == "High":
+                    self._r_complete += 0.09
+            elif self.difficulty == "Hard":
+                # Rising reward each clean step; tiny extra when prerequisites were satisfied
+                step_r = 0.065 + 0.012 * float(order_idx)
+                self._r_complete += min(0.125, step_r)
+                if task["depends_on"]:
+                    self._r_hard_dep_ok += 0.025
         else:
-            reward = self._reward_hard()
+            msgs.append(f"Task '{title}' completed with violations.")
 
-        return round(min(1.0, max(0.0, reward)), 3)
+        return True, " ".join(msgs)
 
-    def _reward_easy(self) -> float:
-        r = 0.0
-        # +0.15 per task added, up to 3 tasks
-        r += min(3, self.tasks_added) * 0.15
-        # +0.20 for calling list
+    def _score(self) -> float:
+        if self.difficulty == "Easy":
+            return self._score_easy()
+        if self.difficulty == "Medium":
+            return self._score_medium()
+        return self._score_hard()
+
+    def _easy_has_two_priorities(self) -> bool:
+        if len(self.tasks) < 3:
+            return False
+        return len({t["priority"] for t in self.tasks}) >= 2
+
+    def _score_easy(self) -> float:
+        # Partial: ~+0.11/add, ~+0.12/list. Full 1.0 + done only with 2+ distinct priorities + list.
+        r = min(3, self.tasks_added) * 0.11
         if self.list_called:
-            r += 0.20
-        # Goal: >=2 tasks added + list called
-        if self.tasks_added >= 2 and self.list_called:
-            r = 1.0
-            self.goal_completed = True
-        return r
+            r += 0.12
+        if self.tasks_added >= 3 and self.list_called:
+            if self._easy_has_two_priorities():
+                r += 0.55
+                self.goal_completed = True
+            else:
+                r += 0.40
+        return round(min(1.0, r), 3)
 
-    def _reward_medium(self) -> float:
-        r = 0.0
-        # +0.15 per task added, up to 4
-        r += min(4, self.tasks_added) * 0.15
-        # +0.10 per task that has an explicit priority label (not default "Normal" by omission)
-        explicit_priority_tasks = sum(
-            1 for t in self.tasks
-            if t["priority"] != "Normal" or t.get("priority_explicit", False)
-        )
-        r += min(4, explicit_priority_tasks) * 0.10
-        # +0.20 per High-priority task completed on time
-        r += self.high_tasks_completed_on_time * 0.20
-        # Penalties
-        r -= self.deadline_misses * 0.25
-        # Goal: >=4 tasks, >=2 High added, ALL High completed on time, no deadline misses
+    def _score_medium(self) -> float:
+        # Softer caps match smaller increments (4×0.07 ≈ 0.28 per bucket)
+        r = min(0.28, self._r_add)
+        r += min(0.28, self._r_priority)
+        r += min(0.28, self._r_deadline_set)
+        r += min(0.22, self._r_complete)
+        r -= self.deadline_misses * MEDIUM_DEADLINE_MISS_PENALTY
+
         high_tasks = [t for t in self.tasks if t["priority"] == "High"]
-        all_high_done = all(t["completed"] and not t["deadline_missed"] for t in high_tasks)
-        if (
-            self.tasks_added >= 4
-            and self.high_tasks_added >= 2
-            and all_high_done
-            and self.deadline_misses == 0
-        ):
-            r = 1.0
-            self.goal_completed = True
-        return r
-
-    def _reward_hard(self) -> float:
-        r = 0.0
-        # +0.15 per task added, up to 5
-        r += min(5, self.tasks_added) * 0.15
-        # +0.10 per task with non-Normal or explicit priority
-        explicit_priority_tasks = sum(
-            1 for t in self.tasks if t["priority"] != "Normal"
+        all_high_on_time = (
+            len(high_tasks) >= 1
+            and all(t["completed"] and not t["deadline_missed"] for t in high_tasks)
         )
-        r += min(5, explicit_priority_tasks) * 0.10
-        # +0.25 per task completed without any violation
-        clean_completions = sum(
-            1 for t in self.tasks
-            if t["completed"] and not t["deadline_missed"] and not t["dependency_violation"]
-        )
-        r += clean_completions * 0.25
-        # Penalty
-        r -= self.dependency_violations * 0.30
-        r -= self.deadline_misses * 0.25
-        # Bonus: optimal ordering (no violations at all + all done)
-        all_done = all(t["completed"] for t in self.tasks)
-        if all_done and self.dependency_violations == 0 and self.deadline_misses == 0:
-            r += 0.10  # perfect-run bonus
-        # Goal: >=5 tasks, >=2 High, all completed, zero violations
-        high_tasks = [t for t in self.tasks if t["priority"] == "High"]
-        if (
-            self.tasks_added >= 5
-            and self.high_tasks_added >= 2
-            and len(self.tasks) == self.tasks_completed
-            and self.dependency_violations == 0
-            and self.deadline_misses == 0
-        ):
-            r = 1.0
+        if self.tasks_added >= 4 and all_high_on_time and self.deadline_misses == 0:
             self.goal_completed = True
-        return r
+            return 1.0
+        return round(min(0.94, max(0.0, r)), 3)
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+    def _score_hard(self) -> float:
+        # Caps aligned with 0.062 increments (~0.31 over 5 adds) to avoid one huge step on task 5
+        r = min(0.34, self._r_add)
+        r += min(0.26, self._r_priority)
+        r += min(0.26, self._r_deadline_set)
+        r += min(0.42, self._r_complete)
+        r += min(0.14, self._r_hard_dep_ok)
+        r += min(0.08, self._r_hard_edge)
+        topo_bonus = 0.0
+        if self.clean_completions == 5 and self.dep_violations == 0:
+            topo_bonus = 0.055
+        r += topo_bonus
+        r -= self.dep_violations * HARD_DEP_VIOLATION_PENALTY
+        r -= self.deadline_misses * HARD_DEADLINE_MISS_PENALTY
 
-    def _format_task_list(self) -> str:
+        all_done = self.tasks_added >= 5 and all(t["completed"] for t in self.tasks)
+        if all_done and self.dep_violations == 0 and self.deadline_misses == 0:
+            self.goal_completed = True
+            return 1.0
+        return round(min(0.99, max(0.0, r)), 3)
+
+    def _fmt_list(self) -> str:
         if not self.tasks:
-            return "No tasks in the system."
-        lines = [f"Current tasks ({len(self.tasks)} total):"]
+            return "No tasks yet."
+        lines = [f"Tasks ({len(self.tasks)}):"]
         for i, t in enumerate(self.tasks, 1):
             status = "DONE" if t["completed"] else "PENDING"
             flags = []
             if t.get("deadline_missed"):
                 flags.append("LATE")
-            if t.get("dependency_violation"):
-                flags.append("DEP-VIOLATION")
-            flag_str = f" [{', '.join(flags)}]" if flags else ""
-            dep_str = f" | Deps: {t['depends_on']}" if t["depends_on"] else ""
-            dl_str = f" | Due: {t['deadline']}" if t["deadline"] != "none" else ""
-            lines.append(
-                f"  {i}. [{status}]{flag_str} {t['title']} "
-                f"(Priority: {t['priority']}{dl_str}{dep_str})"
-            )
+            if t.get("dep_violation"):
+                flags.append("DEP-ERR")
+            flag_str = f" [{','.join(flags)}]" if flags else ""
+            dl = f" due={t['deadline']}" if t["deadline"] else ""
+            dep = f" deps={t['depends_on']}" if t["depends_on"] else ""
+            lines.append(f"  {i}. [{status}]{flag_str} {t['title']} ({t['priority']}{dl}{dep})")
         return "\n".join(lines)
-
-    # ------------------------------------------------------------------
-    # State property
-    # ------------------------------------------------------------------
 
     @property
     def state(self) -> State:
