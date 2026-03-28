@@ -12,12 +12,12 @@ tags:
   - planning
 ---
 
-# Smart Personal Task Manager – OpenEnv Jayesh
+# Smart Personal Task Manager - OpenEnv Jayesh
 
-> An AI agent environment for managing tasks with priorities, deadlines, and dependencies — built for the **OpenEnv Hackathon Round 1**.
+> An AI agent environment for managing tasks with priorities, deadlines, and dependencies -- built for the **OpenEnv Hackathon Round 1**.
 
-- 🤗 HF Space: https://huggingface.co/spaces/jayesh20/openenv_jayesh
-- 🐍 Python 3.10+
+- HF Space: https://huggingface.co/spaces/jayesh20/openenv_jayesh
+- Python 3.10+
 
 ---
 
