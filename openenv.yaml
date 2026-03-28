@@ -1,0 +1,11 @@
+spec_version: 1
+name: task-manager-openenv
+type: space
+runtime: fastapi
+app: server.app:app
+port: 8000
+description: "OpenEnv Hackathon Task Manager: AI agent environment tracking task states through Easy, Medium, and Hard dynamic constraints."
+tags:
+  - task-manager
+  - productivity
+  - openenv

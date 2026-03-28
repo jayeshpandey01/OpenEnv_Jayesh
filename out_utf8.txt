@@ -1,0 +1,23 @@
+Connecting to OpenEnv Task Manager Server on http://127.0.0.1:8000...
+
+=== Scenario: Easy ===
+Goal: Task Manager started in Easy mode. Goal: Add 2 tasks and list them.
+Action 'add 1': Task 'Buy groceries' added successfully. (Priority: Normal) | Score: 0.4
+Action 'add 2': Task 'Do laundry' added successfully. (Priority: Low) | Score: 0.8
+Action 'list': Listed 2 current tasks. | Score: 1.0 | Done: True
+
+=== Scenario: Medium ===
+Goal: Task Manager started in Medium mode. Goal: Add 3 tasks (mixed priorities) and complete all High priority ones.
+Action 'add Normal': Task 'Write code' added successfully. (Priority: Normal) | Score: 0.2
+Action 'add High': Task 'Review PR' added successfully. (Priority: High) | Score: 0.5
+Action 'add Low': Task 'Check emails' added successfully. (Priority: Low) | Score: 0.7
+Action 'complete High': Task 'Review PR' marked as completed. | Score: 1.0 | Done: True
+
+=== Scenario: Hard ===
+Goal: Task Manager started in Hard mode. Goal: Add 4 tasks (at least 2 High) and complete at least 2 High priority tasks.
+Action 'add High 1': Task 'Fix prod bug' added successfully. (Priority: High) | Score: 0.2
+Action 'add High 2': Task 'Write incident report' added successfully. (Priority: High) | Score: 0.4
+Action 'add Normal': Task 'Refactor' added successfully. (Priority: Normal) | Score: 0.5
+Action 'add Low': Task 'Update docs' added successfully. (Priority: Low) | Score: 0.6
+Action 'complete High 1': Task 'Fix prod bug' marked as completed. | Score: 0.8
+Action 'complete High 2': Task 'Write incident report' marked as completed. | Score: 1.0 | Done: True
