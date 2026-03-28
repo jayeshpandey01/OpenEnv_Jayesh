@@ -1,26 +1,38 @@
-# OpenEnv Jayesh — Task Manager Environment
+---
+title: OpenEnv Jayesh - Task Manager
+emoji: robot
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+app_port: 8000
+tags:
+  - openenv
+  - task-manager
+---
 
-> An AI agent environment for managing tasks across three difficulty levels, built for the OpenEnv Hackathon Round 1.
+# OpenEnv Jayesh - Task Manager Environment
 
-[![HF Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-blue)](https://huggingface.co/spaces/jayesh20/openenv_jayesh)
-[![OpenEnv](https://img.shields.io/badge/OpenEnv-Round%201-orange)](https://github.com/meta-pytorch/OpenEnv)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-green)](https://www.python.org/)
+An AI agent environment for managing tasks across three difficulty levels, built for the OpenEnv Hackathon Round 1.
+
+- HF Space: https://huggingface.co/spaces/jayesh20/openenv_jayesh
+- Python 3.10+
 
 ---
 
 ## What is this?
 
-A real-world **Task Manager** environment where an AI agent must add, prioritize, and complete tasks to earn rewards. The environment cycles through **Easy → Medium → Hard** difficulty levels, each with stricter goals and richer reward signals.
+A real-world Task Manager environment where an AI agent must add, prioritize, and complete tasks to earn rewards. The environment cycles through Easy, Medium, and Hard difficulty levels, each with stricter goals and richer reward signals.
 
 ---
 
 ## Difficulty Levels
 
-| Level | Goal |
-|-------|------|
-| Easy | Add 2 tasks and list them |
+| Level  | Goal |
+|--------|------|
+| Easy   | Add 2 tasks and list them |
 | Medium | Add 3 tasks (mixed priorities), complete all High priority ones |
-| Hard | Add 4 tasks (≥2 High priority), complete at least 2 High priority tasks |
+| Hard   | Add 4 tasks (at least 2 High priority), complete at least 2 High priority tasks |
 
 ---
 
@@ -28,10 +40,10 @@ A real-world **Task Manager** environment where an AI agent must add, prioritize
 
 ```python
 TaskManagerAction(
-    command="add",        # "add" | "complete" | "list"
-    title="Fix bug",      # required for add / complete
-    priority="High",      # "Low" | "Normal" | "High"  (optional, default: Normal)
-    deadline="2026-04-01" # optional
+    command="add",         # "add" | "complete" | "list"
+    title="Fix bug",       # required for add / complete
+    priority="High",       # "Low" | "Normal" | "High"  (optional, default: Normal)
+    deadline="2026-04-01"  # optional
 )
 ```
 
@@ -41,11 +53,11 @@ TaskManagerAction(
 
 ```python
 TaskManagerObservation(
-    success=True,         # whether the action succeeded
-    message="Task added", # status message
-    tasks=[...],          # current task list
-    reward=0.4,           # partial progress score (0.0 – 1.0)
-    done=False            # True when episode goal is achieved
+    success=True,          # whether the action succeeded
+    message="Task added",  # status message
+    tasks=[...],           # current task list
+    reward=0.4,            # partial progress score (0.0 to 1.0)
+    done=False             # True when episode goal is achieved
 )
 ```
 
@@ -58,8 +70,8 @@ TaskManagerObservation(
 |-------|--------|
 | Add 1st task | +0.4 |
 | Add 2nd task | +0.4 |
-| Call `list` | +0.2 |
-| **Goal complete** | **1.0** |
+| Call list | +0.2 |
+| Goal complete | 1.0 |
 
 ### Medium
 | Event | Reward |
@@ -67,7 +79,7 @@ TaskManagerObservation(
 | Each task added (up to 3) | +0.2 each |
 | Adding a High priority task | +0.1 |
 | Completing High priority tasks | +0.3 (proportional) |
-| **Goal complete** | **1.0** |
+| Goal complete | 1.0 |
 
 ### Hard
 | Event | Reward |
@@ -75,7 +87,7 @@ TaskManagerObservation(
 | Each task added (up to 4) | +0.1 each |
 | Each High priority task added (up to 2) | +0.1 each |
 | Each High priority task completed (up to 2) | +0.2 each |
-| **Goal complete** | **1.0** |
+| Goal complete | 1.0 |
 
 ---
 
@@ -102,19 +114,16 @@ from models import TaskManagerAction
 
 env = OpenenvJayeshEnvironment()
 
-# Reset starts in Easy mode
 obs = env.reset()
 print(obs.message)
-# → "Task Manager started in Easy mode. Goal: Add 2 tasks and list them."
+# Task Manager started in Easy mode. Goal: Add 2 tasks and list them.
 
-# Add tasks
 obs = env.step(TaskManagerAction(command="add", title="Buy groceries", priority="Normal"))
 print(obs.reward)  # 0.4
 
 obs = env.step(TaskManagerAction(command="add", title="Fix bug", priority="High"))
 print(obs.reward)  # 0.8
 
-# List tasks to complete the Easy goal
 obs = env.step(TaskManagerAction(command="list"))
 print(obs.reward)  # 1.0
 print(obs.done)    # True
@@ -124,15 +133,13 @@ print(obs.done)    # True
 
 ## API Endpoints
 
-Once the server is running, visit:
-
 | URL | Description |
 |-----|-------------|
-| `http://127.0.0.1:8000/docs` | Swagger UI — interactive API testing |
-| `http://127.0.0.1:8000/health` | Health check |
-| `POST /reset` | Start a new episode |
-| `POST /step` | Execute an action |
-| `GET /state` | Get current episode state |
+| http://127.0.0.1:8000/docs | Swagger UI - interactive API testing |
+| http://127.0.0.1:8000/health | Health check |
+| POST /reset | Start a new episode |
+| POST /step | Execute an action |
+| GET /state | Get current episode state |
 
 ---
 
@@ -140,16 +147,16 @@ Once the server is running, visit:
 
 ```
 openenv_jayesh/
-├── openenv.yaml          # OpenEnv manifest
-├── pyproject.toml        # Package metadata
-├── models.py             # Action + Observation types
-├── client.py             # HTTP client
-├── inference.py          # Local test runner
+├── Dockerfile
+├── openenv.yaml
+├── pyproject.toml
+├── models.py
+├── client.py
+├── inference.py
 └── server/
-    ├── app.py            # FastAPI application
-    ├── openenv_jayesh_environment.py  # Core environment logic
-    ├── requirements.txt
-    └── Dockerfile
+    ├── app.py
+    ├── openenv_jayesh_environment.py
+    └── requirements.txt
 ```
 
 ---
@@ -161,9 +168,3 @@ openenv push --repo-id jayesh20/openenv_jayesh
 ```
 
 Live space: https://huggingface.co/spaces/jayesh20/openenv_jayesh
-
----
-
-## License
-
-BSD-style license — see LICENSE file for details.
