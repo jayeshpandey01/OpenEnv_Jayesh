@@ -1,6 +1,5 @@
 ---
 title: OpenEnv Jayesh - Task Manager
-emoji: robot
 colorFrom: blue
 colorTo: green
 sdk: docker
