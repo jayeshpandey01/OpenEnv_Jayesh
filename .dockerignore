@@ -1,0 +1,11 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+outputs/
+out_utf8.txt
+out.py
+inference_output.txt
