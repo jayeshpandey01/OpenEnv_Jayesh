@@ -5,9 +5,9 @@
 Data models for the Smart Personal Task Manager OpenEnv Environment.
 
 Supports three difficulty levels:
-  Easy   – add tasks & list them
-  Medium – priorities + deadlines; complete High-priority tasks before deadline
-  Hard   – priorities + deadlines + dependencies; complete in valid topological order
+  Easy   - add tasks & list them
+  Medium - priorities + deadlines; complete High-priority tasks before deadline
+  Hard   - priorities + deadlines + dependencies; complete in valid topological order
 """
 
 from typing import Optional, List, Dict, Any
@@ -22,9 +22,9 @@ class TaskManagerAction(Action):
         ...,
         description=(
             "Command to execute. One of: 'add', 'complete', 'list'. "
-            "'add' – create a new task. "
-            "'complete' – mark an existing task as done. "
-            "'list' – display all current tasks."
+            "'add' - create a new task. "
+            "'complete' - mark an existing task as done. "
+            "'list' - display all current tasks."
         ),
     )
     title: Optional[str] = Field(

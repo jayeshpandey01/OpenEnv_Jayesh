@@ -2,29 +2,29 @@
 # All rights reserved.
 
 """
-Smart Personal Task Manager – OpenEnv Environment Implementation.
+Smart Personal Task Manager - OpenEnv Environment Implementation.
 
 Three difficulty tiers:
 
-Easy (reset 0, 3, 6 …)
+Easy (reset 0, 3, 6 ...)
   Goal: Add 2-3 tasks of any priority, then call 'list'.
   Reward: +0.15 per task added (up to 3), +0.20 for listing. Full 1.0 on completion.
 
-Medium (reset 1, 4, 7 …)
+Medium (reset 1, 4, 7 ...)
   Goal: Add 4 tasks with mixed priorities AND deadlines.
         Complete ALL High-priority tasks before their deadlines.
   Reward: +0.15 per task added (up to 4), +0.10 per correct priority label,
           +0.20 per High-priority task completed on time.
-          −0.25 penalty per deadline miss.
+          -0.25 penalty per deadline miss.
           Full 1.0 on completion.
 
-Hard (reset 2, 5, 8 …)
+Hard (reset 2, 5, 8 ...)
   Goal: Add 5 tasks with priorities, deadlines, AND dependencies.
         Complete tasks in valid dependency order; respect all deadlines.
   Reward: +0.15 per task added (up to 5), +0.10 per correct priority,
           +0.25 per task completed without violation.
           Bonus +0.10 for achieving perfect (optimal) topological ordering.
-          −0.30 per dependency violation, −0.25 per deadline miss.
+          -0.30 per dependency violation, -0.25 per deadline miss.
           Full 1.0 on perfect completion.
 """
 
@@ -73,9 +73,9 @@ class OpenenvJayeshEnvironment(Environment):
     """
     Smart Personal Task Manager with three distinct difficulty levels.
 
-    Easy   → add tasks + list
-    Medium → deadlines + priority management
-    Hard   → deadlines + priority + dependency ordering
+    Easy   -> add tasks + list
+    Medium -> deadlines + priority management
+    Hard   -> deadlines + priority + dependency ordering
     """
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
@@ -334,7 +334,7 @@ class OpenenvJayeshEnvironment(Environment):
         if deadline_missed:
             msg_parts.append("(!) Deadline miss penalty applied.")
         if not dep_violation and not deadline_missed:
-            msg_parts.append("Clean completion — no penalties.")
+            msg_parts.append("Clean completion -- no penalties.")
 
         return True, " ".join(msg_parts)
 
@@ -362,7 +362,7 @@ class OpenenvJayeshEnvironment(Environment):
         # +0.20 for calling list
         if self.list_called:
             r += 0.20
-        # Goal: ≥2 tasks added + list called
+        # Goal: >=2 tasks added + list called
         if self.tasks_added >= 2 and self.list_called:
             r = 1.0
             self.goal_completed = True
@@ -382,7 +382,7 @@ class OpenenvJayeshEnvironment(Environment):
         r += self.high_tasks_completed_on_time * 0.20
         # Penalties
         r -= self.deadline_misses * 0.25
-        # Goal: ≥4 tasks, ≥2 High added, ALL High completed on time, no deadline misses
+        # Goal: >=4 tasks, >=2 High added, ALL High completed on time, no deadline misses
         high_tasks = [t for t in self.tasks if t["priority"] == "High"]
         all_high_done = all(t["completed"] and not t["deadline_missed"] for t in high_tasks)
         if (
@@ -417,7 +417,7 @@ class OpenenvJayeshEnvironment(Environment):
         all_done = all(t["completed"] for t in self.tasks)
         if all_done and self.dependency_violations == 0 and self.deadline_misses == 0:
             r += 0.10  # perfect-run bonus
-        # Goal: ≥5 tasks, ≥2 High, all completed, zero violations
+        # Goal: >=5 tasks, >=2 High, all completed, zero violations
         high_tasks = [t for t in self.tasks if t["priority"] == "High"]
         if (
             self.tasks_added >= 5

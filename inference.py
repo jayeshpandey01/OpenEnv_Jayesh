@@ -1,5 +1,5 @@
 """
-inference.py – Demonstration of the Smart Personal Task Manager OpenEnv.
+inference.py - Demonstration of the Smart Personal Task Manager OpenEnv.
 
 Runs all three difficulty scenarios and prints step-by-step reward signals.
 """
@@ -36,7 +36,7 @@ def _step(client, action: TaskManagerAction, label: str):
 
 def run_easy(client):
     print("\n" + "=" * 70)
-    print("SCENARIO 1 – EASY MODE")
+    print("SCENARIO 1 - EASY MODE")
     print("=" * 70)
     res = client.reset()
     print(f"\nGoal:\n{res.observation.message}\n")
@@ -57,7 +57,7 @@ def run_easy(client):
 
 def run_medium(client):
     print("\n" + "=" * 70)
-    print("SCENARIO 2 – MEDIUM MODE")
+    print("SCENARIO 2 - MEDIUM MODE")
     print("=" * 70)
     res = client.reset()
     print(f"\nGoal:\n{res.observation.message}\n")
@@ -74,7 +74,7 @@ def run_medium(client):
 
     # Complete High-priority tasks on time
     _step(client, TaskManagerAction(command="complete", title="Fix critical bug"), "complete 'Fix critical bug' [High, on-time]")
-    _step(client, TaskManagerAction(command="complete", title="Deploy hotfix"), "complete 'Deploy hotfix' [High, on-time → GOAL]")
+    _step(client, TaskManagerAction(command="complete", title="Deploy hotfix"), "complete 'Deploy hotfix' [High, on-time -> GOAL]")
 
     print()
 
@@ -85,7 +85,7 @@ def run_medium(client):
 
 def run_hard(client):
     print("\n" + "=" * 70)
-    print("SCENARIO 3 – HARD MODE (dependencies + deadlines)")
+    print("SCENARIO 3 - HARD MODE (dependencies + deadlines)")
     print("=" * 70)
     res = client.reset()
     print(f"\nGoal:\n{res.observation.message}\n")
@@ -97,8 +97,8 @@ def run_hard(client):
     t5  = "2026-04-22"
 
     # Build dependency graph:
-    #   Reproduce bug  ──► Write fix  ──► Code review  ──► Deploy
-    #   Write tests    ──► Code review
+    #   Reproduce bug  ---> Write fix  ---> Code review  ---> Deploy
+    #   Write tests    ---> Code review
     _step(client, TaskManagerAction(command="add", title="Reproduce bug", priority="High", deadline=t1), "add 'Reproduce bug' High")
     _step(client, TaskManagerAction(command="add", title="Write tests", priority="Normal", deadline=t2), "add 'Write tests' Normal")
     _step(client, TaskManagerAction(command="add", title="Write fix", priority="High", deadline=t3, depends_on=["Reproduce bug"]), "add 'Write fix' High (depends: Reproduce bug)")
@@ -106,12 +106,12 @@ def run_hard(client):
     _step(client, TaskManagerAction(command="add", title="Deploy to production", priority="Low", deadline=t5, depends_on=["Code review"]), "add 'Deploy to prod' Low (depends: Code review)")
 
     print()
-    print("  -- Completing in CORRECT topological order –-")
+    print("  -- Completing in CORRECT topological order --")
     _step(client, TaskManagerAction(command="complete", title="Reproduce bug"), "complete 'Reproduce bug' [no deps, on-time]")
     _step(client, TaskManagerAction(command="complete", title="Write tests"), "complete 'Write tests' [no deps, on-time]")
     _step(client, TaskManagerAction(command="complete", title="Write fix"), "complete 'Write fix' [dep met, on-time]")
     _step(client, TaskManagerAction(command="complete", title="Code review"), "complete 'Code review' [deps met, on-time]")
-    _step(client, TaskManagerAction(command="complete", title="Deploy to production"), "complete 'Deploy to prod' [all deps met → GOAL]")
+    _step(client, TaskManagerAction(command="complete", title="Deploy to production"), "complete 'Deploy to prod' [all deps met -> GOAL]")
 
     print()
     print("  -- Violations demo (new reset, same Hard mode) --")
@@ -132,7 +132,7 @@ def run_hard(client):
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("Smart Personal Task Manager – OpenEnv Inference Demo")
+    print("Smart Personal Task Manager - OpenEnv Inference Demo")
     print("Connecting to http://127.0.0.1:8000 ...")
     print("=" * 70)
 
