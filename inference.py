@@ -11,6 +11,18 @@ Usage:
 import sys
 import os
 
+# Pre-Submission Configuration (Checklist points 2 & 3)
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
+MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o")
+HF_TOKEN = os.environ.get("HF_TOKEN")  # No default per checklist point 3
+LOCAL_IMAGE_NAME = os.environ.get("LOCAL_IMAGE_NAME", "openenv_jayesh")
+
+
+def from_docker_image():
+    """Requirement for submission flow (Checklist point 2)."""
+    return LOCAL_IMAGE_NAME
+
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from server.openenv_jayesh_environment import OpenenvJayeshEnvironment
